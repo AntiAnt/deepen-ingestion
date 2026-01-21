@@ -1,0 +1,9 @@
+name: deepen-ingestion
+channels:
+  - conda-forge
+dependencies:
+  - ffmpeg
+  - python=3.12
+  - uv
+
+prefix: "/Users/mike/miniforge3/envs/deepen-ingestion"
