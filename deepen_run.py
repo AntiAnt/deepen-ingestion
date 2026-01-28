@@ -9,9 +9,6 @@ from reliquery import Relic
 from deepen_ingestion import get_ingestion_service
 from runner import get_summary_runner
 
-# yt_url = "https://www.youtube.com/watch?v=GFyijjy1KdU"
-yt_url = "https://www.youtube.com/watch?v=YRMVTmbe-Is"
-
 
 def get_pipeline_config(path: str) -> Dict:
     assert os.path.exists(path)
@@ -49,35 +46,49 @@ def main():
     relic_name = config.get("relic_name", video_id)
     relic_type = config.get("relic_type", "video-summary")
     relic_storage_name = config.get("relic_storage_name")
+    skip_ingestion = config.get("skip_ingestion")
+    user_data_path = config["path_to_user_data"]
 
     relic = get_relic(
         relic_name=relic_name, relic_type=relic_type, storage_name=relic_storage_name
     )
 
+    # store config on bucket
+    relic.add_json(name="remote-config", json_data=config["pipeline"])
 
     # Ingestion
-    ingestion_service = get_ingestion_service()
-    ingestion_result = ingestion_service.ingest_audio(url)
-    ingestion_result["audio"].seek(0)
-    relic.add_audio(name="audio.wav", audio_obj=ingestion_result["audio"])
-    relic.add_json(name="metadata", json_data=ingestion_result["video_metadata"])
-    relic.add_json(name="video_info", json_data=ingestion_result["video_info"])
+    if skip_ingestion is not None and skip_ingestion is False:
+        ingestion_service = get_ingestion_service()
+        ingestion_result = ingestion_service.ingest_audio(url)
+        ingestion_result["audio"].seek(0)
+        relic.add_audio(name="audio.wav", audio_obj=ingestion_result["audio"])
+        relic.add_json(name="metadata", json_data=ingestion_result["video_metadata"])
+        relic.add_json(name="video_info", json_data=ingestion_result["video_info"])
 
-    print("Ingestion complete!")
+        print("Ingestion complete!")
 
-    if config["ingestion_only"] is True:
-        return
-
+        if config["ingestion_only"] is True:
+            return
 
     if config["remote_summary_processing"] is True:
         pipeline_args = config["pipeline"]
         if "ingestion" in pipeline_args:
             del pipeline_args["ingestion"]
-        
-        summary_runner = get_summary_runner(relic_name=relic_name, relic_type=relic_type, storage_name=relic_storage_name, pipeline_args=config)
-        summary_runner.run()
+
+        summary_runner = get_summary_runner(
+            relic_name=relic_name,
+            relic_type=relic_type,
+            storage_name=relic_storage_name,
+            user_data_path=user_data_path
+        )
+
+        isnstance_id = summary_runner.run()
+
+
+        print(f"Remote summariztion started on instance: {isnstance_id}")
     else:
         raise NotImplementedError("Local processing is not yet supported")
+
 
 if __name__ == "__main__":
     main()
