@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, parse_qsl, urlparse
 
 from reliquery import Relic
 
-from deepen_ingestion import get_ingestion_service
+from deepen_ingestion import SourceTypeError, get_ingestion_service
 from runner import get_summary_runner
 
 
@@ -41,9 +41,18 @@ def main():
     args = parser.parse_args()
     config = get_pipeline_config(args.config_path)
 
-    url = config["video_url"]
-    video_id = get_video_id_from_url(url)
-    relic_name = config.get("relic_name", video_id)
+    source_type = config.get("source_type", None)
+    if source_type == "file-system":
+        input_source = config["audio_path"]
+        print(input_source)
+        relic_name = config["relic_name"]
+    elif source_type == "youtube":
+        input_source = config["video_url"] 
+        video_id = get_video_id_from_url(input_source)
+        relic_name = config.get("relic_name", video_id)
+    else:
+        raise SourceTypeError(f"Source type {source_type} not supported")
+
     relic_type = config.get("relic_type", "video-summary")
     relic_storage_name = config.get("relic_storage_name")
     skip_ingestion = config.get("skip_ingestion")
@@ -55,15 +64,16 @@ def main():
 
     # store config on bucket
     relic.add_json(name="remote-config", json_data=config["pipeline"])
-
+    print(input_source)
     # Ingestion
     if skip_ingestion is not None and skip_ingestion is False:
-        ingestion_service = get_ingestion_service()
-        ingestion_result = ingestion_service.ingest_audio(url)
+        ingestion_service = get_ingestion_service(source_type=source_type)
+        ingestion_result = ingestion_service.ingest_audio(input_source)
         ingestion_result["audio"].seek(0)
         relic.add_audio(name="audio.wav", audio_obj=ingestion_result["audio"])
-        relic.add_json(name="metadata", json_data=ingestion_result["video_metadata"])
-        relic.add_json(name="video_info", json_data=ingestion_result["video_info"])
+        relic.add_json(name="metadata", json_data=ingestion_result["metadata"])
+        if ingestion_result.get("info") is not None:
+            relic.add_json(name="video_info", json_data=ingestion_result["info"])
 
         print("Ingestion complete!")
 
